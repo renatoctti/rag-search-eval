@@ -1,0 +1,33 @@
+{
+  "name": "rag-search-eval",
+  "version": "0.1.0",
+  "description": "Search for RAG on Postgres + pgvector, measured: full-text vs embeddings vs hybrid vs reranked, scored on the SciFact benchmark with confidence intervals.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"test/*.test.ts\"",
+    "ingest": "node src/ingest.ts",
+    "evaluate": "node src/evaluate.ts",
+    "db:local": "node scripts/local-db.ts"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "author": "Renato Cazzoletti",
+  "license": "MIT",
+  "dependencies": {
+    "@huggingface/transformers": "^4.3.2",
+    "fflate": "^0.8.2",
+    "pg": "^8.23.1",
+    "pgvector": "^0.2.1"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.15",
+    "@electric-sql/pglite-pgvector": "^0.0.16",
+    "@electric-sql/pglite-socket": "^0.2.18",
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.15.0",
+    "typescript": "^5.9.0"
+  }
+}

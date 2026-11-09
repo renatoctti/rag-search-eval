@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  # Indexes SciFact in a real pgvector container and scores every retriever. It fails when a
+  # method's nDCG@10 falls more than 0.01 under results/scifact.json.
+  evaluate:
+    runs-on: ubuntu-latest
+    services:
+      db:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: rag
+          POSTGRES_PASSWORD: rag
+          POSTGRES_DB: rag
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U rag"
+          --health-interval 3s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - uses: actions/cache@v4
+        with:
+          path: |
+            .cache/models
+            data
+          key: models-bge-small-minilm-scifact-v1
+      - run: npm run ingest
+      - run: npm run evaluate -- --report results/latest.json --baseline results/scifact.json --max-drop 0.01 | tee evaluation.md
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: evaluation
+          path: |
+            results/latest.json
+            evaluation.md
