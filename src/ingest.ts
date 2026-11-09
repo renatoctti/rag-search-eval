@@ -1,7 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import pgvector from "pgvector/pg";
 import { loadSciFact } from "./dataset.ts";
-import { connect, createSchema } from "./db.ts";
+import { buildBm25, connect, createSchema } from "./db.ts";
 import { embedDocuments } from "./embed.ts";
 
 const BATCH = 32;
@@ -57,4 +57,6 @@ if (rows[0].n === docs.length) {
   }
   console.log(`indexed ${docs.length} documents`);
 }
+await buildBm25(client);
+console.log("built the BM25 tables");
 await client.end();

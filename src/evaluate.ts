@@ -9,7 +9,7 @@ import { createRetrievers } from "./retrievers.ts";
 
 const { values: args } = parseArgs({
   options: {
-    methods: { type: "string", default: "fts,dense,dense-exact,hybrid,rerank" },
+    methods: { type: "string", default: "fts,bm25,dense,dense-exact,hybrid-fts,hybrid,rerank" },
     limit: { type: "string" },
     report: { type: "string" },
     baseline: { type: "string" },
@@ -18,9 +18,11 @@ const { values: args } = parseArgs({
 });
 
 const COMPARISONS: [string, string][] = [
-  ["dense", "fts"],
+  ["bm25", "fts"],
+  ["dense", "bm25"],
+  ["hybrid", "bm25"],
   ["hybrid", "dense"],
-  ["hybrid", "fts"],
+  ["hybrid", "hybrid-fts"],
   ["rerank", "hybrid"],
   ["dense-exact", "dense"],
 ];

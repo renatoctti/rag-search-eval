@@ -50,8 +50,9 @@ jobs:
         with:
           path: |
             .cache/models
+            .cache/embeddings.jsonl
             data
-          key: models-bge-small-minilm-scifact-v1
+          key: scifact-bge-small-v1
       - run: npm run ingest
       - run: npm run evaluate -- --report results/latest.json --baseline results/scifact.json --max-drop 0.01 | tee evaluation.md
       - uses: actions/upload-artifact@v4

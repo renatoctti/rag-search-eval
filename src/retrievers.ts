@@ -26,6 +26,27 @@ export async function createRetrievers(client: pg.Client): Promise<Record<string
     return rows.map((r) => r.id);
   };
 
+  // BM25 with k1 = 1.2 and b = 0.75, the Elasticsearch defaults the BEIR benchmark used. The
+  // query goes through the same 'english' text search configuration as the documents.
+  const bm25: Retriever = async (query, k) => {
+    const { rows } = await client.query(
+      `WITH q AS (SELECT DISTINCT lexeme FROM unnest(to_tsvector('english', $1))),
+            n AS (SELECT count(*)::float AS n, avg(len)::float AS avgdl FROM bm25_stats)
+       SELECT p.doc_id AS id
+       FROM postings p
+       JOIN q ON q.lexeme = p.term
+       JOIN bm25_terms t ON t.term = p.term
+       JOIN bm25_stats s ON s.doc_id = p.doc_id
+       CROSS JOIN n
+       GROUP BY p.doc_id
+       ORDER BY sum(ln(1 + (n.n - t.df + 0.5) / (t.df + 0.5))
+                    * p.tf * 2.2 / (p.tf + 1.2 * (0.25 + 0.75 * s.len / n.avgdl))) DESC, p.doc_id
+       LIMIT $2`,
+      [query, k],
+    );
+    return rows.map((r) => r.id);
+  };
+
   const dense: Retriever = async (query, k) => {
     const vector = pgvector.toSql(await embedQuery(query));
     const { rows } = await client.query("SELECT id FROM docs ORDER BY emb <=> $1 LIMIT $2", [vector, k]);
@@ -43,8 +64,10 @@ export async function createRetrievers(client: pg.Client): Promise<Record<string
     }
   };
 
-  const hybrid: Retriever = async (query, k) =>
-    reciprocalRankFusion([await fts(query, CANDIDATES), await dense(query, CANDIDATES)]).slice(0, k);
+  const fused = (lexical: Retriever): Retriever => async (query, k) =>
+    reciprocalRankFusion([await lexical(query, CANDIDATES), await dense(query, CANDIDATES)]).slice(0, k);
+  const hybrid = fused(bm25);
+  const hybridFts = fused(fts);
 
   let reranker: Promise<[Awaited<ReturnType<typeof AutoTokenizer.from_pretrained>>, Awaited<ReturnType<typeof AutoModelForSequenceClassification.from_pretrained>>]> | undefined;
   const loadReranker = () =>
@@ -56,8 +79,8 @@ export async function createRetrievers(client: pg.Client): Promise<Record<string
   // A cross-encoder reads the query and one document together, which is more accurate than
   // comparing two vectors made apart, and too slow for the whole corpus: it only reorders the top.
   const rerank: Retriever = async (query, k) => {
-    const fused = await hybrid(query, CANDIDATES);
-    const head = fused.slice(0, RERANK_TOP);
+    const candidates = await hybrid(query, CANDIDATES);
+    const head = candidates.slice(0, RERANK_TOP);
     const { rows } = await client.query("SELECT id, title, body FROM docs WHERE id = ANY($1)", [head]);
     const text = new Map<string, string>(rows.map((r) => [r.id, `${r.title}. ${r.body}`]));
     const [tokenizer, model] = await loadReranker();
@@ -73,8 +96,8 @@ export async function createRetrievers(client: pg.Client): Promise<Record<string
       .map((id, i) => ({ id, score: scores[i]! }))
       .sort((a, b) => b.score - a.score)
       .map((x) => x.id);
-    return [...reordered, ...fused.slice(RERANK_TOP)].slice(0, k);
+    return [...reordered, ...candidates.slice(RERANK_TOP)].slice(0, k);
   };
 
-  return { fts, dense, "dense-exact": denseExact, hybrid, rerank };
+  return { fts, bm25, dense, "dense-exact": denseExact, "hybrid-fts": hybridFts, hybrid, rerank };
 }
