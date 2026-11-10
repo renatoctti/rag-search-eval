@@ -89,6 +89,9 @@ src/retrievers.ts  full-text, BM25, dense, exact, hybrid (RRF), cross-encoder re
 src/fusion.ts      reciprocal rank fusion
 src/metrics.ts     nDCG, recall, MRR, bootstrap and paired bootstrap
 src/evaluate.ts    runs every method, prints the tables, writes the report, gates on a baseline
+src/server.ts      the search API: /healthz and POST /search, one metric log line per request
+Dockerfile         the service image (embedding model baked in), published to GHCR by CI
+infra/             Terraform for AWS: ECS Fargate, RDS pgvector, ALB, alarms and a dashboard
 ```
 
 The gate (`--baseline results/scifact.json --max-drop 0.01`) exits 1 when any method's nDCG@10
@@ -112,3 +115,12 @@ npm run evaluate -- --methods bm25,hybrid --limit 50     # a quick run
 
 Needs Node 24 (it runs the TypeScript directly). `npm test` runs the metric, fusion and parsing
 tests with no database; `npm run typecheck` checks the types.
+
+## Deploying it
+
+The same retriever runs as a small HTTP service (`POST /search`) and is described as Terraform in
+[`infra/`](infra/README.md): ECS Fargate behind a load balancer, RDS PostgreSQL with pgvector,
+and CloudWatch metrics, alarms and a dashboard fed by one structured log line per request. CI
+checks the Terraform (`fmt`, `validate`, `tflint`, a Trivy scan) and builds, starts and probes
+the container. It does not apply the stack: **as of this commit it has not been run against a real
+AWS account**, and the `infra/` README says how to do it and tear it down.
