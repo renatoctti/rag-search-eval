@@ -12,18 +12,19 @@ real or noise?*
 
 [BEIR SciFact](https://github.com/beir-cellar/beir): 5,183 scientific abstracts and 300 test
 claims, each with the abstracts that support or contradict it. Embeddings are
-`bge-small-en-v1.5` (8-bit ONNX, on the CPU, no API key). Local run on PGlite; the CI numbers on
-the real `pgvector/pgvector` image are in `results/` and the CI artifact.
+`bge-small-en-v1.5` (8-bit ONNX, on the CPU, no API key). These are the numbers of the CI run on
+the real `pgvector/pgvector:pg17` image (a shared GitHub runner, so the latencies are only
+indicative); a first run on a laptop with PGlite gave the same ranking and scores within 0.003.
 
 | Method | nDCG@10 (95% CI) | recall@10 | recall@100 | p50 latency |
 |---|---|---|---|---|
-| Postgres full-text (`ts_rank_cd`) | 0.329 (0.286–0.371) | 0.501 | 0.761 | 60 ms |
-| BM25 (in SQL) | 0.691 (0.647–0.732) | 0.833 | 0.922 | 10 ms |
-| Embeddings (pgvector, HNSW) | 0.708 (0.665–0.751) | 0.831 | 0.943 | 12 ms |
-| Embeddings, exact scan | 0.708 (0.665–0.751) | 0.831 | 0.940 | 30 ms |
-| Hybrid, full-text + embeddings | 0.590 (0.543–0.637) | 0.724 | 0.948 | 83 ms |
-| **Hybrid, BM25 + embeddings (RRF)** | **0.720 (0.678–0.761)** | 0.846 | **0.965** | 24 ms |
-| Hybrid + cross-encoder rerank | 0.693 (0.650–0.735) | 0.828 | 0.965 | 1,769 ms |
+| Postgres full-text (`ts_rank_cd`) | 0.329 (0.286–0.371) | 0.501 | 0.761 | 30 ms |
+| BM25 (in SQL) | 0.691 (0.647–0.732) | 0.833 | 0.922 | 5 ms |
+| Embeddings (pgvector, HNSW) | 0.709 (0.667–0.752) | 0.836 | 0.947 | 20 ms |
+| Embeddings, exact scan | 0.709 (0.667–0.752) | 0.836 | 0.947 | 19 ms |
+| Hybrid, full-text + embeddings | 0.593 (0.545–0.640) | 0.727 | 0.952 | 58 ms |
+| **Hybrid, BM25 + embeddings (RRF)** | **0.722 (0.681–0.763)** | 0.853 | **0.963** | 27 ms |
+| Hybrid + cross-encoder rerank | 0.693 (0.650–0.736) | 0.828 | 0.963 | 1,274 ms |
 
 The intervals come from a bootstrap over the 300 queries. Many of these differences are inside
 them, so the comparison that matters is the paired one (same queries, difference per query):
@@ -31,11 +32,11 @@ them, so the comparison that matters is the paired one (same queries, difference
 | Comparison (nDCG@10) | Difference | 95% CI | Real? |
 |---|---|---|---|
 | BM25 − `ts_rank_cd` | +0.362 | 0.321 to 0.404 | yes |
-| hybrid − BM25 | +0.029 | 0.006 to 0.051 | yes, small |
-| hybrid − embeddings | +0.012 | −0.011 to 0.035 | **no** |
-| embeddings − BM25 | +0.017 | −0.017 to 0.052 | **no** |
-| hybrid (BM25) − hybrid (`ts_rank_cd`) | +0.130 | 0.099 to 0.162 | yes |
-| rerank − hybrid | −0.027 | −0.055 to 0.000 | no, and it is not better |
+| hybrid − BM25 | +0.031 | 0.009 to 0.053 | yes, small |
+| hybrid − embeddings | +0.013 | −0.010 to 0.036 | **no** |
+| embeddings − BM25 | +0.018 | −0.016 to 0.053 | **no** |
+| hybrid (BM25) − hybrid (`ts_rank_cd`) | +0.129 | 0.098 to 0.161 | yes |
+| rerank − hybrid | −0.029 | −0.056 to −0.002 | yes: the reranker is worse |
 | exact − HNSW | 0.000 | 0.000 to 0.000 | identical |
 
 ## What I take from it
@@ -48,14 +49,16 @@ them, so the comparison that matters is the paired one (same queries, difference
   the top.
 - **Hybrid is better, but on this data it is a small and uncertain gain over embeddings alone.**
   It is clearly better than BM25 alone, and not distinguishable from embeddings. Its real
-  advantage is recall@100 (0.965), which is what a reranking stage or an LLM sees.
+  advantage is recall@100 (0.963), which is what a reranking stage or an LLM sees.
 - **The reranker did not pay for itself here.** `ms-marco-MiniLM-L-6` over the top 30 scored
-  lower than the hybrid it reordered and added about 1.7 s per query on a CPU. That model is
+  lower than the hybrid it reordered (the paired difference excludes 0 by a hair) and added more
+  than a second per query on a CPU. That model is
   trained on web-search questions; SciFact is claim verification over abstracts. A different
   reranker or domain could change this, and I did not try others.
-- **HNSW lost nothing** against the exact scan at this size (recall@100 0.943 against 0.940), at
-  a third of the latency. This would not stay true on a corpus a thousand times larger.
-- **Sanity check against the literature:** the embedding score (0.708) is close to the 0.713 that
+- **HNSW lost nothing** against the exact scan: the top-100 lists were the same. It also saved
+  nothing: at 5,183 rows the planner's sequential scan is as fast (19 ms against 20 ms). The index
+  matters on a corpus orders of magnitude larger, which this one is not.
+- **Sanity check against the literature:** the embedding score (0.709) is close to the 0.713 that
   the original `bge-small-en-v1.5` gets on SciFact in MTEB, and the BM25 score (0.691) is in the
   range usually reported for BM25 on this dataset. I took these figures from memory of the public
   tables and did not recheck them against the sources. Mine are an 8-bit quantised model and
@@ -69,8 +72,9 @@ them, so the comparison that matters is the paired one (same queries, difference
 - Reciprocal rank fusion uses the paper's `k = 60` and was not tuned; tuning it on the same
   300 queries would fit the test.
 - The bootstrap resamples queries. It does not capture the variance from the choice of corpus.
-- The local numbers come from PGlite (Postgres compiled to WASM, with the same pgvector code); the
-  CI runs the same code on the `pgvector/pgvector` image. They agree within the gate's tolerance.
+- `npm run db:local` serves PGlite (Postgres compiled to WASM, with pgvector) for machines
+  without Docker. Scores match the real image within 0.003; latencies do not, so only the CI
+  figures are quoted here.
 - `ts_rank_cd` is in the table on purpose, as the cautionary baseline. It is not a fair BM25.
 - SciFact is CC BY-NC 2.0. The script downloads it (checksum pinned) and never commits it.
 
