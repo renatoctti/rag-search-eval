@@ -58,7 +58,7 @@ Terraform 1.9 or newer, and the AWS CLI configured with a profile for that accou
 1. **Set a budget alert first**: Billing → Budgets → a monthly cost budget of US$ 5 with an e-mail
    alert. A stack left running costs money every hour.
 2. `cd infra && terraform init`
-3. `terraform plan -var alarm_email=you@example.com` and read it. It should add about 40 resources.
+3. `terraform plan -var alarm_email=you@example.com` and read it. It should add 27 resources, 28 with the e-mail subscription.
 4. `terraform apply -var alarm_email=you@example.com`. RDS takes 5 to 10 minutes. Confirm the SNS
    e-mail so the alarms can reach you.
 5. Load the data: run the command in the `run_ingest` output, then follow the `ingest` stream of
