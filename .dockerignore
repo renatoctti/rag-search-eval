@@ -1,0 +1,9 @@
+node_modules
+.cache
+.git
+.github
+data
+results
+infra
+test
+scripts

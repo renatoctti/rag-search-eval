@@ -4,9 +4,21 @@ import { DIMENSIONS } from "./embed.ts";
 
 const DATABASE_URL = process.env.DATABASE_URL ?? "postgres://rag:rag@127.0.0.1:5433/rag";
 
+/**
+ * On AWS the database is described by the standard PGHOST, PGUSER, PGPASSWORD and PGDATABASE
+ * variables (so the password can come from Secrets Manager and never sits in a URL), and RDS only
+ * accepts TLS. Anywhere else it is DATABASE_URL, or the local default.
+ */
+function clientConfig(): pg.ClientConfig {
+  if (!process.env.PGHOST) return { connectionString: DATABASE_URL };
+  // ponytail: encrypted but the server certificate is not verified, because that needs the RDS CA
+  // bundle in the image; traffic stays inside the VPC. Bundle the CA and verify when this matters.
+  return { ssl: process.env.PGSSLMODE === "disable" ? false : { rejectUnauthorized: false } };
+}
+
 /** One connection is enough here, and it is all the PGlite socket server (no Docker) offers. */
 export async function connect(): Promise<pg.Client> {
-  const client = new pg.Client({ connectionString: DATABASE_URL });
+  const client = new pg.Client(clientConfig());
   await client.connect();
   // the extension must exist before the vector type can be registered with the driver
   await client.query("CREATE EXTENSION IF NOT EXISTS vector");

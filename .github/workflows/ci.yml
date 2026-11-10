@@ -22,6 +22,31 @@ jobs:
       - run: npm run typecheck
       - run: npm test
 
+  # Never applied from CI: it has no AWS credentials. It checks that the code is formatted, valid
+  # for the AWS provider, free of the usual mistakes and of known insecure settings.
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.12.2
+      - run: terraform -chdir=infra fmt -check -recursive -diff
+      - run: terraform -chdir=infra init -backend=false -input=false
+      - run: terraform -chdir=infra validate
+      - uses: terraform-linters/setup-tflint@v4
+      - run: tflint --chdir infra --init
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - run: tflint --chdir infra
+      - uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: config
+          scan-ref: infra
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          trivyignores: infra/.trivyignore
+
   # Indexes SciFact in a real pgvector container and scores every retriever. It fails when a
   # method's nDCG@10 falls more than 0.01 under results/scifact.json.
   evaluate:

@@ -1,0 +1,20 @@
+# Each line is a finding that is a deliberate choice for this demo, with the reason.
+
+# The service is a public HTTP endpoint with no domain, so there is no certificate to put on it.
+AVD-AWS-0053
+AVD-AWS-0054
+
+# The tasks must reach the image registry and the dataset host, and they sit in the default VPC
+# with no NAT gateway; only the load balancer can reach them.
+AVD-AWS-0104
+
+# Log group and queue encryption with a customer-managed key: a KMS key costs money and adds
+# nothing for logs that hold queries over a public benchmark.
+AVD-AWS-0017
+
+# CloudWatch alarms cannot publish to a topic encrypted with the AWS-managed SNS key; a customer
+# key would be needed, with the same cost argument.
+AVD-AWS-0095
+
+# A demo meant to be destroyed after a few hours.
+AVD-AWS-0177
